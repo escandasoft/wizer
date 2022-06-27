@@ -26,7 +26,7 @@ use std::rc::Rc;
 #[cfg(feature = "structopt")]
 use structopt::StructOpt;
 use wasmtime::Extern;
-use wasmtime_wasi::WasiCtx;
+use wasmtime_wasi::{WasiCtx, WasiFile};
 
 const DEFAULT_INHERIT_STDIO: bool = true;
 const DEFAULT_INHERIT_ENV: bool = false;
@@ -431,7 +431,7 @@ impl Wizer {
 
     /// Initialize the given Wasm, snapshot it, and return the serialized
     /// snapshot as a new, pre-initialized Wasm module.
-    pub fn run(&self, wasm: &[u8]) -> anyhow::Result<Vec<u8>> {
+    pub fn run(&self, wasm: &[u8], stdin_file: Box<dyn WasiFile>, stderr_file: Box<dyn WasiFile>, stdout_file: Box<dyn WasiFile>) -> anyhow::Result<Vec<u8>> {
         // Parse rename spec.
         let renames = FuncRenames::parse(&self.func_renames)?;
 
@@ -457,7 +457,12 @@ impl Wizer {
 
         let config = self.wasmtime_config()?;
         let engine = wasmtime::Engine::new(&config)?;
-        let wasi_ctx = self.wasi_context()?;
+        let mut wasi_ctx = self.wasi_context()?;
+        if let Some(ref mut ctx) = wasi_ctx {
+            ctx.set_stdin(stdin_file);
+            ctx.set_stdout(stdout_file);
+            ctx.set_stderr(stderr_file);
+        }
         let mut store = wasmtime::Store::new(&engine, wasi_ctx);
         let module = wasmtime::Module::new(&engine, &instrumented_wasm)
             .context("failed to compile the Wasm module")?;
